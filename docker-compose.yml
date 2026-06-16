@@ -1,0 +1,105 @@
+services:
+
+  # ─────────────────────────────────────────
+  # 1. OLLAMA — local LLM runtime
+  # ─────────────────────────────────────────
+  ollama:
+    image: ollama/ollama:latest
+    container_name: healthcare_ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 20s
+
+  # ─────────────────────────────────────────
+  # 2. MONGODB — synthetic patient database
+  # ─────────────────────────────────────────
+  mongodb:
+    image: mongo:7.0
+    container_name: healthcare_mongodb
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: hospital123
+      MONGO_INITDB_DATABASE: sunrise_hospital
+    volumes:
+      - mongo_data:/data/db
+      - ./mongo-init:/docker-entrypoint-initdb.d
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+
+  # ─────────────────────────────────────────
+  # 3. MONGO EXPRESS — visual DB browser
+  # ─────────────────────────────────────────
+  mongo-express:
+    image: mongo-express:latest
+    container_name: healthcare_mongo_ui
+    ports:
+      - "8081:8081"
+    environment:
+      ME_CONFIG_MONGODB_ADMINUSERNAME: admin
+      ME_CONFIG_MONGODB_ADMINPASSWORD: hospital123
+      ME_CONFIG_MONGODB_URL: mongodb://admin:hospital123@mongodb:27017/
+      ME_CONFIG_BASICAUTH: "false"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # 4. MCP SERVER — bridges MongoDB tools for LLM clients
+  # ─────────────────────────────────────────
+  mcp-server:
+    build:
+      context: ./mcp-server
+    container_name: healthcare_mcp_server
+    ports:
+      - "8000:8000"
+    environment:
+      MONGO_URI: mongodb://admin:hospital123@mongodb:27017/sunrise_hospital?authSource=admin
+      OLLAMA_URL: http://ollama:11434
+      OLLAMA_MODEL: llama3.2:3b
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      ollama:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/sse', timeout=3)\" || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 15s
+
+  # ─────────────────────────────────────────
+  # 5. CHAT UI — browser-based chat client (the MCP client)
+  # ─────────────────────────────────────────
+  chat-ui:
+    build:
+      context: ./chat-ui
+    container_name: healthcare_chat_ui
+    ports:
+      - "5000:5000"
+    environment:
+      MCP_SERVER_URL: http://mcp-server:8000/sse
+    depends_on:
+      mcp-server:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  ollama_data:
+  mongo_data:
