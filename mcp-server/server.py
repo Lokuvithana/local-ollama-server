@@ -163,7 +163,7 @@ Staff query: {user_prompt}
     }
 
     try:
-        resp = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=120)
+        resp = requests.post(f"{OLLAMA_URL}/api/generate", json=payload, timeout=300)
         resp.raise_for_status()
         llm_response = resp.json().get("response", "").strip()
 
