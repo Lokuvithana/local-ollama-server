@@ -133,7 +133,7 @@ def get_staff_by_role(role_keyword: str) -> str:
 # along with real patient context, and see what comes back.
 # ─────────────────────────────────────────────────────────────
 @mcp.tool()
-def ask_healthcare_llm(user_prompt: str, context_limit: int = 8) -> str:
+def ask_healthcare_llm(user_prompt: str, context_limit: int = 2) -> str:
     """
     Send a prompt to the local healthcare LLM (Ollama) with patient records
     injected as context. Use this to observe how the LLM responds to
